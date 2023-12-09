@@ -7,7 +7,22 @@ struct Game {
     board: Vec<Vec<Cell>>,
 }
 
-struct Cell {}
+#[derive(Component)]
+struct Cell;
+
+// Marker for the player
+#[derive(Component)]
+struct Player;
+
+#[derive(Component)]
+struct Health {
+    current: usize,
+    max: usize,
+}
+
+// Marker for the player
+#[derive(Component)]
+struct Xp(usize);
 
 fn main() {
     App::new()
@@ -15,6 +30,8 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .init_resource::<Game>()
         .add_systems(Startup, setup)
+        .add_systems(Startup, spawn_player)
+        .add_systems(Update, move_players)
         .add_systems(
             Update,
             (
@@ -51,8 +68,47 @@ fn keyboard_input_system(keyboard_input: Res<Input<KeyCode>>) {
     }
 }
 
+fn move_players(
+    time: Res<Time>,
+    mut q: Query<&mut Transform, With<Player>>,
+) {
+    for mut transform in q.iter_mut() {
+        // move our asteroids along the X axis
+        // at a speed of 10.0 units per second
+        transform.translation.x += 10.0 * time.delta_seconds();
+    }
+}
+
+fn spawn_player(
+    // needed for creating/removing data in the ECS World
+    mut commands: Commands,
+    // needed for loading assets
+    asset_server: Res<AssetServer>,
+) {
+    // create a new entity with whatever components we want
+    commands.spawn((
+        // give it a marker
+        Player,
+        // give it health and xp
+        Health {
+            current: 100,
+            max: 125,
+        },
+        Xp(0),
+        // give it a 2D sprite to render on-screen
+        // (Bevy's SpriteBundle lets us add everything necessary)
+        SpriteBundle {
+            texture: asset_server.load("player.png"),
+            transform: Transform::from_xyz(25.0, 50.0, 0.0),
+            // use the default values for all other components in the bundle
+            ..Default::default()
+        },
+    ));
+}
+
 fn setup(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut game: ResMut<Game>,
