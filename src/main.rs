@@ -1,14 +1,17 @@
-use bevy::prelude::*;
-use bevy::input::keyboard::*;
+use bevy::{
+    input::keyboard::*,
+    prelude::*,
+    sprite::collide_aabb::{collide, Collision},
+};
 use rand::Rng;
 
 #[derive(Resource, Default)]
 struct Game {
-    board: Vec<Vec<Cell>>,
+    board: Vec<Vec<Wall>>,
 }
 
 #[derive(Component)]
-struct Cell;
+struct Wall;
 
 // Marker for the player
 #[derive(Component)]
@@ -24,21 +27,23 @@ struct Health {
 #[derive(Component)]
 struct Xp(usize);
 
+#[derive(Component)]
+struct Collider;
+
+#[derive(Event, Default)]
+struct CollisionEvent;
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .add_plugins(DefaultPlugins)
         .init_resource::<Game>()
+        .add_event::<CollisionEvent>()
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_player)
         .add_systems(Update, move_players)
-        .add_systems(
-            Update,
-            (
-                print_keyboard_event_system,
-                keyboard_input_system,
-            )
-        )
+        .add_systems(Update, (print_keyboard_event_system, keyboard_input_system))
+        .add_systems(FixedUpdate, check_for_collisions)
         .run();
 }
 
@@ -68,12 +73,55 @@ fn keyboard_input_system(keyboard_input: Res<Input<KeyCode>>) {
     }
 }
 
-fn move_players(
-    time: Res<Time>,
-    mut q: Query<&mut Transform, With<Player>>,
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut game: ResMut<Game>,
+    mut windows: Query<&mut Window>,
 ) {
+    let mut window = windows.single_mut();
+
+    commands.spawn(Camera2dBundle::default());
+
+    let h = window.height();
+    let w = window.width();
+
+    (0..h as i32)
+        .step_by(10)
+        .for_each(|jint| {
+            let j = jint as f32;
+
+            (0..w as i32)
+                .step_by(10)
+                .for_each(|iint| {
+                    let i = iint as f32;
+
+                    commands.spawn((
+                        // give it a marker
+                        Wall,
+                        // give it a 2D sprite to render on-screen
+                        // (Bevy's SpriteBundle lets us add everything necessary)
+                        SpriteBundle {
+                            sprite: Sprite {
+                                color: Color::rgb(0.98, 0.5, 0.45),
+                                custom_size: Some(Vec2::new(8.5, 8.5)),
+                                ..Default::default()
+                            },
+                            transform: Transform::from_xyz(i - w / 2 as f32, j - h / 2 as f32, 0.),
+                            // use the default values for all other components in the bundle
+                            ..Default::default()
+                        },
+                        Collider,
+                    ));
+                })
+        })
+}
+
+fn move_players(time: Res<Time>, mut q: Query<&mut Transform, With<Player>>) {
     for mut transform in q.iter_mut() {
-        // move our asteroids along the X axis
+        // move along the X axis
         // at a speed of 10.0 units per second
         transform.translation.x += 10.0 * time.delta_seconds();
     }
@@ -106,43 +154,31 @@ fn spawn_player(
     ));
 }
 
-fn setup(
+fn check_for_collisions(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut game: ResMut<Game>,
-    mut windows: Query<&mut Window>,
+    player_query: Query<&Transform, With<Player>>,
+    collider_query: Query<(Entity, &Transform, Option<&Wall>), With<Collider>>,
+    mut collision_events: EventWriter<CollisionEvent>,
 ) {
-    let mut window = windows.single_mut();
+    let player_transform = player_query.single();
+    let player_size = player_transform.scale.truncate();
 
-    commands.spawn(Camera2dBundle::default());
+    // check collision with walls
+    for (collider_entity, transform, maybe_wall) in &collider_query {
+        let collision = collide(
+            player_transform.translation,
+            player_size,
+            transform.translation,
+            transform.scale.truncate(),
+        );
+        if let Some(collision) = collision {
+            // Sends a collision event so that other systems can react
+            collision_events.send_default();
 
-    let h = window.height();
-    let w = window.width();
-
-    game.board = (0..h as i32)
-        .step_by(10)
-        .map(|jint| {
-            let j = jint as f32;
-
-            (0..w as i32)
-                .step_by(10)
-                .map(|iint| {
-                    let i = iint as f32;
-
-                    commands.spawn(SpriteBundle {
-                        sprite: Sprite {
-                          color: Color::rgb(0.98, 0.5, 0.45),
-                          custom_size: Some(Vec2::new(8.5, 8.5)),
-                          ..default()
-                        },
-                        transform: Transform::from_xyz(i - w/2 as f32, j - h/2 as f32, 0.),
-                        ..default()
-                    });
-                    Cell { }
-                })
-                .collect()
-        })
-        .collect();
+            // Walls should be despawned
+            if maybe_wall.is_some() {
+                commands.entity(collider_entity).despawn();
+            }
+        }
+    }
 }
