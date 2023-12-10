@@ -18,6 +18,9 @@ struct Wall;
 struct Player;
 
 #[derive(Component)]
+struct Enemy;
+
+#[derive(Component)]
 struct Health {
     current: usize,
     max: usize,
@@ -41,6 +44,7 @@ fn main() {
         .add_event::<CollisionEvent>()
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_player)
+        .add_systems(Startup, spawn_enemy)
         .add_systems(Update, move_players)
         .add_systems(Update, (print_keyboard_event_system, keyboard_input_system))
         .add_systems(FixedUpdate, check_for_collisions)
@@ -148,6 +152,38 @@ fn spawn_player(
         SpriteBundle {
             texture: asset_server.load("player.png"),
             transform: Transform::from_xyz(25.0, 50.0, 0.0),
+            // use the default values for all other components in the bundle
+            ..Default::default()
+        },
+    ));
+}
+
+fn spawn_enemy(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut windows: Query<&mut Window>,
+) {
+    let mut window = windows.single_mut();
+    let h = window.height();
+    let w = window.width();
+    let mut rng = rand::thread_rng();
+    let start_x = rng.gen_range(0.0..(w / 2 as f32));
+    let start_y = rng.gen_range(0.0..(h / 2 as f32));
+
+    // create a new entity with whatever components we want
+    commands.spawn((
+        // give it a marker
+        Enemy,
+        // give it health and xp
+        Health {
+            current: 100,
+            max: 125,
+        },
+        // give it a 2D sprite to render on-screen
+        // (Bevy's SpriteBundle lets us add everything necessary)
+        SpriteBundle {
+            texture: asset_server.load("ghost1.png"),
+            transform: Transform::from_xyz(start_x, start_y, 0.0),
             // use the default values for all other components in the bundle
             ..Default::default()
         },
