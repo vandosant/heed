@@ -26,6 +26,12 @@ struct Health {
     max: usize,
 }
 
+#[derive(Component)]
+struct Location {
+    i: f32,
+    j: f32,
+}
+
 // Marker for the player
 #[derive(Component)]
 struct Xp(usize);
@@ -42,39 +48,10 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .init_resource::<Game>()
         .add_event::<CollisionEvent>()
-        .add_systems(Startup, setup)
-        .add_systems(Startup, spawn_player)
-        .add_systems(Startup, spawn_enemy)
-        .add_systems(Update, move_players)
-        .add_systems(Update, (print_keyboard_event_system, keyboard_input_system))
+        .add_systems(Startup, (setup, spawn_player, spawn_enemy))
+        .add_systems(Update, (keyboard_input_system, move_player))
         .add_systems(FixedUpdate, check_for_collisions)
         .run();
-}
-
-/// This system prints out all keyboard events as they come in
-fn print_keyboard_event_system(mut keyboard_input_events: EventReader<KeyboardInput>) {
-    for event in keyboard_input_events.iter() {
-        info!("{:?}", event);
-    }
-}
-
-/// This system prints 'A' key state
-fn keyboard_input_system(keyboard_input: Res<Input<KeyCode>>) {
-    if keyboard_input.pressed(KeyCode::Left) {
-        info!("'Left' pressed");
-    }
-
-    if keyboard_input.pressed(KeyCode::Down) {
-        info!("'down' pressed");
-    }
-
-    if keyboard_input.just_pressed(KeyCode::Right) {
-        info!("'Right' just pressed");
-    }
-
-    if keyboard_input.just_released(KeyCode::Up) {
-        info!("'Up' just released");
-    }
 }
 
 fn setup(
@@ -92,43 +69,31 @@ fn setup(
     let h = window.height();
     let w = window.width();
 
-    (0..h as i32)
-        .step_by(10)
-        .for_each(|jint| {
-            let j = jint as f32;
+    (0..h as i32).step_by(10).for_each(|jint| {
+        let j = jint as f32;
 
-            (0..w as i32)
-                .step_by(10)
-                .for_each(|iint| {
-                    let i = iint as f32;
+        (0..w as i32).step_by(10).for_each(|iint| {
+            let i = iint as f32;
 
-                    commands.spawn((
-                        // give it a marker
-                        Wall,
-                        // give it a 2D sprite to render on-screen
-                        // (Bevy's SpriteBundle lets us add everything necessary)
-                        SpriteBundle {
-                            sprite: Sprite {
-                                color: Color::rgb(0.98, 0.5, 0.45),
-                                custom_size: Some(Vec2::new(8.5, 8.5)),
-                                ..Default::default()
-                            },
-                            transform: Transform::from_xyz(i - w / 2 as f32, j - h / 2 as f32, 0.),
-                            // use the default values for all other components in the bundle
-                            ..Default::default()
-                        },
-                        Collider,
-                    ));
-                })
+            commands.spawn((
+                // give it a marker
+                Wall,
+                // give it a 2D sprite to render on-screen
+                // (Bevy's SpriteBundle lets us add everything necessary)
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: Color::rgb(0.98, 0.5, 0.45),
+                        custom_size: Some(Vec2::new(8.5, 8.5)),
+                        ..Default::default()
+                    },
+                    transform: Transform::from_xyz(i - w / 2 as f32, j - h / 2 as f32, 0.),
+                    // use the default values for all other components in the bundle
+                    ..Default::default()
+                },
+                Collider,
+            ));
         })
-}
-
-fn move_players(time: Res<Time>, mut q: Query<&mut Transform, With<Player>>) {
-    for mut transform in q.iter_mut() {
-        // move along the X axis
-        // at a speed of 10.0 units per second
-        transform.translation.x += 10.0 * time.delta_seconds();
-    }
+    })
 }
 
 fn spawn_player(
@@ -141,7 +106,7 @@ fn spawn_player(
     commands.spawn((
         // give it a marker
         Player,
-        // give it health and xp
+        Location { i: 25.0, j: 50.0 },
         Health {
             current: 100,
             max: 125,
@@ -217,4 +182,39 @@ fn check_for_collisions(
             }
         }
     }
+}
+///
+/// This system prints out all keyboard events as they come in
+fn print_keyboard_event_system(mut keyboard_input_events: EventReader<KeyboardInput>) {
+    for event in keyboard_input_events.iter() {
+        info!("{:?}", event);
+    }
+}
+
+/// This system prints 'A' key state
+fn keyboard_input_system(
+    time: Res<Time>,
+    keyboard_input: Res<Input<KeyCode>>,
+    mut player_query: Query<&mut Location, With<Player>>,
+) {
+    let mut player_position = player_query.single_mut();
+
+    if keyboard_input.pressed(KeyCode::Up) {
+        player_position.j += 30.0 * time.delta_seconds();
+    }
+    if keyboard_input.pressed(KeyCode::Down) {
+        player_position.j -= 30.0 * time.delta_seconds();
+    }
+    if keyboard_input.pressed(KeyCode::Left) {
+        player_position.i -= 30.0 * time.delta_seconds();
+    }
+    if keyboard_input.pressed(KeyCode::Right) {
+        player_position.i += 30.0 * time.delta_seconds();
+    }
+}
+
+fn move_player(mut player_query: Query<(&mut Transform, &Location), With<Player>>) {
+    let (mut transform, location) = player_query.single_mut();
+    transform.translation.x = location.i;
+    transform.translation.y = location.j;
 }
