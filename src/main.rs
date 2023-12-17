@@ -32,9 +32,8 @@ struct Location {
     j: f32,
 }
 
-// Marker for the player
 #[derive(Component)]
-struct Xp(usize);
+struct Speed(f32);
 
 #[derive(Component)]
 struct Collider;
@@ -111,7 +110,7 @@ fn spawn_player(
             current: 100,
             max: 125,
         },
-        Xp(0),
+        Speed(100.0),
         // give it a 2D sprite to render on-screen
         // (Bevy's SpriteBundle lets us add everything necessary)
         SpriteBundle {
@@ -162,7 +161,7 @@ fn check_for_collisions(
     mut collision_events: EventWriter<CollisionEvent>,
 ) {
     let player_transform = player_query.single();
-    let player_size = player_transform.scale.truncate();
+    let player_size = player_transform.scale.truncate() * 5.0;
 
     // check collision with walls
     for (collider_entity, transform, maybe_wall) in &collider_query {
@@ -170,7 +169,7 @@ fn check_for_collisions(
             player_transform.translation,
             player_size,
             transform.translation,
-            transform.scale.truncate(),
+            transform.scale.truncate() * 5.0,
         );
         if let Some(collision) = collision {
             // Sends a collision event so that other systems can react
@@ -183,7 +182,7 @@ fn check_for_collisions(
         }
     }
 }
-///
+
 /// This system prints out all keyboard events as they come in
 fn print_keyboard_event_system(mut keyboard_input_events: EventReader<KeyboardInput>) {
     for event in keyboard_input_events.iter() {
@@ -195,21 +194,21 @@ fn print_keyboard_event_system(mut keyboard_input_events: EventReader<KeyboardIn
 fn keyboard_input_system(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut player_query: Query<&mut Location, With<Player>>,
+    mut player_query: Query<(&mut Location, &Speed), With<Player>>,
 ) {
-    let mut player_position = player_query.single_mut();
+    let (mut loc, speed) = player_query.single_mut();
 
     if keyboard_input.pressed(KeyCode::Up) {
-        player_position.j += 30.0 * time.delta_seconds();
+        loc.j += speed.0 * time.delta_seconds();
     }
     if keyboard_input.pressed(KeyCode::Down) {
-        player_position.j -= 30.0 * time.delta_seconds();
+        loc.j -= speed.0 * time.delta_seconds();
     }
     if keyboard_input.pressed(KeyCode::Left) {
-        player_position.i -= 30.0 * time.delta_seconds();
+        loc.i -= speed.0 * time.delta_seconds();
     }
     if keyboard_input.pressed(KeyCode::Right) {
-        player_position.i += 30.0 * time.delta_seconds();
+        loc.i += speed.0 * time.delta_seconds();
     }
 }
 
