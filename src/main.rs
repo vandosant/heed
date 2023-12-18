@@ -1,7 +1,7 @@
 use bevy::{
     input::keyboard::*,
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
+    sprite::collide_aabb::collide,
 };
 use rand::Rng;
 
@@ -17,7 +17,7 @@ struct Wall;
 #[derive(Component)]
 struct Player;
 
-#[derive(Component)]
+#[derive(Component, Clone, Debug, Default)]
 struct Enemy;
 
 #[derive(Component)]
@@ -38,18 +38,22 @@ struct Speed(f32);
 #[derive(Component)]
 struct Collider;
 
-#[derive(Event, Default)]
-struct CollisionEvent;
+#[derive(Event, Default, Debug)]
+struct WallCollisionEvent;
+
+#[derive(Event, Default, Debug)]
+struct EnemyCollisionEvent(Enemy);
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .add_plugins(DefaultPlugins)
         .init_resource::<Game>()
-        .add_event::<CollisionEvent>()
+        .add_event::<WallCollisionEvent>()
+        .add_event::<EnemyCollisionEvent>()
         .add_systems(Startup, (setup, spawn_player, spawn_enemy))
-        .add_systems(Update, (keyboard_input_system, move_player))
-        .add_systems(FixedUpdate, check_for_collisions)
+        .add_systems(Update, (keyboard_input_system, move_player, move_enemy))
+        .add_systems(FixedUpdate, (check_for_wall_collisions, check_for_enemy_views_player))
         .run();
 }
 
@@ -151,14 +155,15 @@ fn spawn_enemy(
             // use the default values for all other components in the bundle
             ..Default::default()
         },
+        Collider,
     ));
 }
 
-fn check_for_collisions(
+fn check_for_wall_collisions(
     mut commands: Commands,
     player_query: Query<&Transform, With<Player>>,
     collider_query: Query<(Entity, &Transform, Option<&Wall>), With<Collider>>,
-    mut collision_events: EventWriter<CollisionEvent>,
+    mut collision_events: EventWriter<WallCollisionEvent>,
 ) {
     let player_transform = player_query.single();
     let player_size = player_transform.scale.truncate() * 5.0;
@@ -183,14 +188,6 @@ fn check_for_collisions(
     }
 }
 
-/// This system prints out all keyboard events as they come in
-fn print_keyboard_event_system(mut keyboard_input_events: EventReader<KeyboardInput>) {
-    for event in keyboard_input_events.iter() {
-        info!("{:?}", event);
-    }
-}
-
-/// This system prints 'A' key state
 fn keyboard_input_system(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
@@ -216,4 +213,38 @@ fn move_player(mut player_query: Query<(&mut Transform, &Location), With<Player>
     let (mut transform, location) = player_query.single_mut();
     transform.translation.x = location.i;
     transform.translation.y = location.j;
+}
+
+fn check_for_enemy_views_player(
+    mut commands: Commands,
+    player_query: Query<&Transform, With<Player>>,
+    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
+    mut collision_events: EventWriter<EnemyCollisionEvent>,
+) {
+    let player_transform = player_query.single();
+    let player_size = player_transform.scale.truncate();
+
+    // check for view of player
+    for (collider_entity, transform, maybe_enemy) in &collider_query {
+        let collision = collide(
+            player_transform.translation,
+            player_size,
+            transform.translation,
+            transform.scale.truncate() * 50.0,
+        );
+        if let Some(collision) = collision {
+            if let Some(enemy) = maybe_enemy {
+                // Sends a collision event so that other systems can react
+                collision_events.send(EnemyCollisionEvent(enemy.clone()));
+            }
+        }
+    }
+}
+
+fn move_enemy(
+    mut ev_collision: EventReader<EnemyCollisionEvent>,
+) {
+    for ev in ev_collision.iter() {
+        eprintln!("Enemy {:?} sees player!", ev);
+    }
 }
